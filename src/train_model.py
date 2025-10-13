@@ -65,7 +65,7 @@ A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf
 
 # %%
 
-std = calculate_std(datafile, of_mean = True)
+std = calculate_std(datafile, of_mean = False)
 std = torch.tensor(std, dtype = dtype)
 
 # %%
@@ -92,7 +92,7 @@ model = VAE(
     beta = beta,
     dtau = dtau,
     num_poles = 8,
-    latent_dim = 4*8,
+    latent_dim = 4*8-2,
     encoder_channels = [16, 32, 64],
     encoder_kernel_sizes = [9, 9, 9],
     encoder_strides = [2, 2, 2],
@@ -100,14 +100,14 @@ model = VAE(
     encoder_paddings = [4, 4, 4],
     encoder_padding_mode = "reflect",
     quadrature_nodes = 256,
-    matsubara_max = 512,
+    matsubara_max = 256,
     dtype = dtype
 )
 
 # %%
 # configure training procedure
-init_learning_rate = 1.0e-3
-final_learning_rate = 1.0e-4
+init_learning_rate = 3.0e-3
+final_learning_rate = 3.0e-4
 num_epochs = 100
 weight_decay = 0.0
 
