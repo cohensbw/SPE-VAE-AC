@@ -3,7 +3,7 @@ import numpy as np
 def calculate_cov(datafile):
     
     samples = np.loadtxt(datafile, delimiter=",")
-    samples = samples[:,1:] # trim tau = 0, beta points
+    samples = samples[:,0:-1] # trim tau = beta point
     Cov = np.cov(samples.T)
     Cov = Cov
     
@@ -13,7 +13,7 @@ def calculate_jackknife_cov(datafile):
     
     samples = np.loadtxt(datafile, delimiter=",")
     N = samples.shape[0]
-    samples = samples[:,1:] # trim tau = 0, beta points
+    samples = samples[:,0:-1] # trim tau = beta point
     sample_mean = np.mean(samples, axis=0)
     samples = (N*sample_mean - samples)/(N-1)
     Cov = np.cov(samples.T)
@@ -23,7 +23,7 @@ def calculate_jackknife_cov(datafile):
 def calculate_std(datafile, of_mean = True):
     
     samples = np.loadtxt(datafile, delimiter=",")
-    samples = samples[:,1:] # trim tau = 0, beta points
+    samples = samples[:,0:-1] # trim tau = beta point
     std = np.std(samples, axis=0, ddof = 1)
     if of_mean:
         std = std / np.sqrt(samples.shape[0])

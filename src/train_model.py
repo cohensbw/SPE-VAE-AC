@@ -131,8 +131,8 @@ training_losses, validation_losses = run_epochs(
     optimizer = optimizer,
     model = model,
     alpha = 0.0,
-    eta0 = 1.0,
-    eta2 = 1.0,
+    eta0 = 1.0e-1,
+    eta2 = 1.0e-1,
     std = std,
     DEVICE = "cpu",
     scheduler = scheduler
@@ -215,6 +215,6 @@ plt.show()
 Aout = lambda w: spe_spectral(w, poles_mean, residues_mean)
 MSE_A = lambda w: np.square(Aout(w) - A(w))
 spectral_error, tol = integrate.quad(MSE_A, -np.inf, np.inf, epsabs=1e-10)
-print("\int_\infty^\infty dw |A_out(w) - A(w)|^2 = ", spectral_error)
+print("\int_{-\infty}^{\infty} dw |A_out(w) - A(w)|^2 = ", spectral_error)
 
 # %%
