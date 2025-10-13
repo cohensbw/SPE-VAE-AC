@@ -50,38 +50,28 @@ class VAE(nn.Module):
         )
                 
         self.encoder_linear_1 = nn.Linear(encoder_channels[-1]*L, encoder_channels[-1]*latent_dim, bias = False)
-        # nn.init.xavier_uniform_(self.encoder_linear_1.weight)
         
         self.encoder_linear_2 = nn.Linear(encoder_channels[-1]*latent_dim, latent_dim, bias = False)
-        # nn.init.xavier_uniform_(self.encoder_linear_2.weight)
         
         self.encoder_linear_to_mu = nn.Linear(latent_dim, latent_dim, bias = False)
-        # nn.init.xavier_uniform_(self.encoder_linear_to_mu.weight)
         
         self.encoder_linear_to_logvar = nn.Linear(latent_dim, latent_dim, bias = False)
-        # nn.init.xavier_uniform_(self.encoder_linear_to_logvar.weight)
         
         # DECODER LAYERS
         
         self.decoder_linear_1 = nn.Linear(latent_dim, 2*latent_dim, bias = False)
-        # nn.init.xavier_uniform_(self.decoder_linear_1.weight)
         
         self.decoder_linear_2 = nn.Linear(2*latent_dim, 4*latent_dim, bias = False)
-        # nn.init.xavier_uniform_(self.decoder_linear_2.weight)
         
-        self.decoder_linear_to_poles_real = nn.Linear(4*latent_dim, self.num_poles, bias = True)
-        # nn.init.xavier_uniform_(self.decoder_linear_to_poles_real.weight)
+        self.decoder_linear_to_poles_real = nn.Linear(4*latent_dim, num_poles, bias = True)
         # nn.init.zeros_(self.decoder_linear_to_poles_real.bias)
         
-        self.decoder_linear_to_poles_imag = nn.Linear(4*latent_dim, self.num_poles, bias = True)
-        # nn.init.xavier_uniform_(self.decoder_linear_to_poles_real.weight)
+        self.decoder_linear_to_poles_imag = nn.Linear(4*latent_dim, num_poles, bias = True)
         # nn.init.zeros_(self.decoder_linear_to_poles_real.bias)
         
-        self.decoder_linear_to_residues_real = nn.Linear(4*latent_dim, self.num_poles, bias = False)
-        # nn.init.xavier_uniform_(self.decoder_linear_to_residues_real.weight)
+        self.decoder_linear_to_residues_real = nn.Linear(4*latent_dim, num_poles, bias = False)
         
-        self.decoder_linear_to_residues_imag = nn.Linear(4*latent_dim, self.num_poles, bias = False)
-        # nn.init.xavier_uniform_(self.decoder_linear_to_residues_imag.weight)
+        self.decoder_linear_to_residues_imag = nn.Linear(4*latent_dim, num_poles, bias = False)
         
         self.pole_to_greens = PoleToGaussLegendreGreens(
             beta = beta, dtau = self.dtau, N_nodes = quadrature_nodes, N_iwn = matsubara_max, dtype = dtype
@@ -115,11 +105,11 @@ class VAE(nn.Module):
         
         epsilon = self.decoder_linear_to_poles_real(x)
         gamma = self.decoder_linear_to_poles_imag(x)
-        gamma = torch.square(gamma)
+        gamma = torch.abs(gamma)
         poles = torch.complex(epsilon, -gamma)
         
         a = self.decoder_linear_to_residues_real(x)
-        a = torch.square(a)
+        a = torch.abs(a)
         a_sum = a.sum(dim=-1, keepdim=True)
         a = a / (a_sum + 1e-12)
         b = self.decoder_linear_to_residues_imag(x)
