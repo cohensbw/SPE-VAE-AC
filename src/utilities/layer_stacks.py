@@ -15,9 +15,9 @@ def make_linear_stack(
     layers = []
     for i in range(1,len(dims)):
         linear_layer = nn.Linear(dims[i-1], dims[i], bias = bias)
-        nn.init.xavier_uniform_(linear_layer.weight)
-        if bias:
-            nn.init.zeros_(linear_layer.bias)
+        # nn.init.xavier_uniform_(linear_layer.weight)
+        # if bias:
+        #     nn.init.zeros_(linear_layer.bias)
         layers.append(linear_layer)
         layers.append(activation)
     
@@ -35,7 +35,7 @@ def make_conv_stack(
     padding_mode,
     activation = nn.LeakyReLU(),
     in_channel = 1,
-    bias = False
+    bias = False,
 ):
 
     layers = []

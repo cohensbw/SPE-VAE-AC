@@ -2,11 +2,11 @@ import numpy as np
 import torch
 from torch import optim
 from tqdm import tqdm
-from .loss_functions import vae_loss_1, vae_loss_2
+from .loss_functions import vae_loss
 
 
 # run a single training epoch
-def run_training_epoch(epoch, dataloader, optimizer, model, alpha, eta, InvCov, DEVICE):
+def run_training_epoch(epoch, dataloader, optimizer, model, alpha, eta0, eta2, std, DEVICE):
     model.train()
     loop = tqdm(enumerate(dataloader), total=len(dataloader), leave=False)
     training_loss = 0.0
@@ -19,10 +19,7 @@ def run_training_epoch(epoch, dataloader, optimizer, model, alpha, eta, InvCov, 
         Gtau_out, poles, residues, mu, logvar = model(Gtau_in)
 
         # calculate loss
-        if InvCov is None:
-            loss = vae_loss_1(Gtau_out, Gtau_in, mu, logvar, alpha, eta)
-        else:
-            loss = vae_loss_2(Gtau_out, Gtau_in, InvCov, mu, logvar, alpha, eta)
+        loss = vae_loss(poles, residues, Gtau_out, Gtau_in, mu, logvar, alpha, eta0, eta2, std)
 
         # backprop
         optimizer.zero_grad()
@@ -33,12 +30,12 @@ def run_training_epoch(epoch, dataloader, optimizer, model, alpha, eta, InvCov, 
         loop.set_description(f'Epoch [{epoch + 1}]')
         loop.set_postfix(loss=loss.item() / batch_size)
         
-    training_loss /= len(dataloader.dataset)
+    training_loss /= len(dataloader)
     return training_loss
 
 
 # validation epoch
-def run_validation_epoch(epoch, dataloader, model, alpha, eta, InvCov, DEVICE):
+def run_validation_epoch(epoch, dataloader, model, alpha, eta0, eta2, std, DEVICE):
     model.eval()
     validation_loss = 0.0
     with torch.no_grad():
@@ -46,12 +43,9 @@ def run_validation_epoch(epoch, dataloader, model, alpha, eta, InvCov, DEVICE):
             batch_size = x.shape[0]
             Gtau_in = x.reshape(batch_size, -1).to(DEVICE)
             Gtau_out, poles, residues, mu, logvar = model(Gtau_in)
-            if InvCov is None:
-                loss = vae_loss_1(Gtau_out, Gtau_in, mu, logvar, alpha, eta)
-            else:
-                loss = vae_loss_2(Gtau_out, Gtau_in, InvCov, mu, logvar, alpha, eta)
+            loss = vae_loss(poles, residues, Gtau_out, Gtau_in, mu, logvar, alpha, eta0, eta2, std)
             validation_loss += loss.item()
-    validation_loss /= len(dataloader.dataset)
+    validation_loss /= len(dataloader)
     return validation_loss
 
 
@@ -63,8 +57,9 @@ def run_epochs(
     optimizer, 
     model, 
     alpha,
-    eta,
-    InvCov = None,
+    eta0,
+    eta2,
+    std,
     DEVICE="cpu",
     scheduler = None
 ):
@@ -75,8 +70,8 @@ def run_epochs(
         
         print(f'Epoch: {epoch + 1}')
         
-        training_losses[epoch] = run_training_epoch(epoch, training_dataloader, optimizer, model, alpha, eta, InvCov, DEVICE)
-        validation_losses[epoch] = run_validation_epoch(epoch, validation_dataloader, model, alpha, eta, InvCov, DEVICE)
+        training_losses[epoch] = run_training_epoch(epoch, training_dataloader, optimizer, model, alpha, eta0, eta2, std, DEVICE)
+        validation_losses[epoch] = run_validation_epoch(epoch, validation_dataloader, model, alpha, eta0, eta2, std, DEVICE)
         
         if scheduler is not None:
             scheduler.step()
@@ -88,20 +83,3 @@ def run_epochs(
         print(f'Validation Loss: {validation_losses[epoch]:.3e}', end='\n\n')
         
     return training_losses, validation_losses
-
-def calculate_inv_cov(datafile, rtol = 1e-6, dtype = torch.float32):
-    
-    samples = np.loadtxt(datafile, delimiter=",")
-    samples = samples[:,1:-1]
-    Cov = np.cov(samples.T)
-    eigvals, eigvecs = np.linalg.eigh(Cov)
-    if rtol > 0:
-        mask = eigvals >= (rtol * eigvals.max())
-        eigvals = eigvals[mask]
-        eigvecs = eigvecs[:, mask]
-    eigvals = 1/eigvals
-    # eigvals = eigvals / np.max(eigvals)
-    eigvals = eigvals / np.exp(np.mean(np.log(eigvals)))
-    InvCov = eigvecs @ np.diag(eigvals) @ eigvecs.T
-    
-    return torch.tensor(InvCov, dtype = dtype)

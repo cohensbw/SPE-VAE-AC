@@ -8,7 +8,8 @@ class SimpleGreensDataset(Dataset):
     
     def __init__(self, filepath, transform=None, dtype = torch.float32):
         
-        samples = np.loadtxt(filepath, delimiter=",")
+        # trim off tau = beta value
+        samples = np.loadtxt(filepath, delimiter=",")[:,0:-1]
         self.data = torch.tensor(samples, dtype = dtype)
         self.transform = transform
 
@@ -31,8 +32,8 @@ class JackknifeGreensDataset(Dataset):
     
     def __init__(self, filepath, transform=None, dtype = torch.float32):
         
-        # Load all Green's functions at once
-        samples = np.loadtxt(filepath, delimiter=",")
+        # Load all Green's functions at once, trimming off tau = beta value
+        samples = np.loadtxt(filepath, delimiter=",")[:,0:-1]
         
         # get the number of samples
         N_samples = samples.shape[0]
@@ -67,8 +68,8 @@ class BootstrapGreensDataset(Dataset):
     
     def __init__(self, filepath, N_bootstrap=None, transform=None, dtype = torch.float32):
         
-        # Load all the Green's function as once
-        samples = np.loadtxt(filepath, delimiter=",")
+        # Load all the Green's function as once, trimming off tau = beta value
+        samples = np.loadtxt(filepath, delimiter=",")[:,0:-1]
         
         # get the number of samples
         N_samples = samples.shape[0]

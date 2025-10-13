@@ -1,18 +1,24 @@
 import torch
 import torch.nn as nn
 from scipy import special
+import numpy as np
 
 class PoleToGaussLegendreGreens(nn.Module):
 
-    def __init__(self, beta, Ltau, N_nodes = 256, dtype = torch.float32):
+    def __init__(self, beta, dtau, N_nodes = 256, N_iwn = 256, dtype = torch.float32):
 
         # Call nn.Module default _init_() method
         super().__init__()
         
+        # Map float type to complex type
+        ctype = torch.complex64 if dtype == torch.float32 else torch.complex128
+        
         # Tau grid
-        taus = torch.linspace(0.0, beta, Ltau, dtype=dtype)
+        Ltau = int(np.round(beta/dtau))
+        taus = torch.linspace(0.0, beta-dtau, Ltau, dtype=dtype)
         self.register_buffer("beta", torch.tensor(beta, dtype=dtype)) # (,)
-        self.register_buffer("Ltau", torch.tensor(Ltau, dtype=torch.int))
+        self.register_buffer("dtau", torch.tensor(dtau, dtype=dtype)) # (,)
+        self.register_buffer("Ltau", torch.tensor(Ltau, dtype=torch.int)) # (,)
         self.register_buffer("taus", taus)  # (Ltau,)
         
         # Gauss–Legendre nodes + weights
@@ -25,6 +31,19 @@ class PoleToGaussLegendreGreens(nn.Module):
         # Precompute Phi(t) = tan(pi/2 * t)
         phi = torch.tan(torch.pi/2 * nodes)  # (N_nodes,)
         self.register_buffer("phi", phi)
+        
+        # Matsubara frequencies for computing G(tau=0)
+        iwn = 1j * (2 * np.arange(N_iwn) + 1) * np.pi / beta
+        iwn = torch.tensor(iwn, dtype = ctype)
+        self.register_buffer("iwn", iwn)
+        coefs = torch.tensor([
+            -0.5,
+            -beta/4,
+            -7*special.zeta(3.0)*beta**2/(4*np.pi**3),
+            beta**3/48,
+            31*special.zeta(5.0)*beta**4/(16*np.pi**5)
+        ], dtype=dtype)
+        self.register_buffer("coefs", coefs)
 
     def forward(self, poles, residues):
             
@@ -33,10 +52,12 @@ class PoleToGaussLegendreGreens(nn.Module):
             poles = poles.unsqueeze(0)       # (1, num_poles)
             residues = residues.unsqueeze(0) # (1, num_poles)
             
-        epsilon = torch.real(poles)
-        gamma = -torch.imag(poles)
-        a = torch.real(residues)
-        b = torch.imag(residues)
+        epsilon = torch.real(poles) # (batch, num_poles)
+        gamma = -torch.imag(poles) # (batch, num_poles)
+        a = torch.real(residues) # (batch, num_poles)
+        b = torch.imag(residues) # (batch, num_poles)
+        
+        # COMPUTE G(tau) FOR 0 < tau < beta
 
         # omegas: (batch, num_poles, N_nodes)
         omegas = epsilon[..., None] + gamma[..., None] * self.phi[None, None, :]
@@ -60,14 +81,95 @@ class PoleToGaussLegendreGreens(nn.Module):
 
         # integrand: (batch, num_poles, Ltau, N_nodes)
         integrand = numerator[..., None, :] / denominator
+        
+        # integrate: (batch, Ltau, N_nodes)
+        integrand = integrand.sum(dim = 1)
 
-        # perform gaussian quadrature outputting shape (batch, num_poles, Ltau)
+        # perform gaussian quadrature outputting shape (batch, Ltau)
         G_tau = torch.matmul(integrand, self.weights)
         
-        # Sum for each Green's function
-        G_tau = G_tau.sum(dim=1)
+        # COMPUTE G(tau) FOR tau = 0
         
-        # normalizations
-        norms = torch.matmul(numerator,self.weights).sum(dim=1)
+        # get matsubara frequencies (N_iwn,)
+        iwn = self.iwn
+        
+        # compute matsubara Green's function in upper-half complex plane
+        # (batches, poles, N_iwn)
+        G_iwn = (a[..., None] + 1j*b[..., None] )/((epsilon[..., None] -1j*gamma[..., None] ) - iwn[None, None, :])
+        
+        # sum over poles
+        # (batches, N_iwn)
+        G_iwn = G_iwn.sum(1)
+        
+        
+        # calculate the 1/(iwn) coefficient
+        # (batches, num_poles)
+        c = -(a+1j*b)
+        
+        # calculate the 1/(iwn) contribution to G(iwn)
+        # (batches, N_iwn)
+        G_iwn -= (torch.real(c[:,:,None])/iwn[None, None,:]).sum(1)
+        
+        # Update G(tau=0) based on 1/(iwn) constribution
+        # (batches, 1)
+        G_tau[:,0] = self.coefs[0] * torch.real(c).sum(1)
+        
+        
+        # calculate the 1/(iwn)^2 coefficient
+        # (batches, num_poles)
+        c *= (epsilon-1j*gamma)
+        
+        # calculate the 1/(iwn)^2 contribution to G(iwn)
+        # (batches, N_iwn)
+        G_iwn -= (c[:,:,None]/iwn[None, None,:]**2).sum(1)
+        
+        # Update G(tau=0) based on 1/(iwn)^2 constribution
+        # (batches, 1)
+        G_tau[:,0] += self.coefs[1] * torch.real(c).sum(1)
+        
+        
+        # calculate the 1/(iwn)^3 coefficient
+        # (batches, num_poles)
+        c *= (epsilon-1j*gamma)
+        
+        # calculate the 1/(iwn)^3 contribution to G(iwn)
+        # (batches, N_iwn)
+        G_iwn -= (c[:,:,None]/iwn[None, None,:]**3).sum(1)
+        
+        # Update G(tau=0) based on 1/(iwn)^3 constribution
+        # (batches, 1)
+        G_tau[:,0] += self.coefs[2] * torch.imag(c).sum(1)
+        
+        
+        # calculate the 1/(iwn)^4 coefficient
+        # (batches, num_poles)
+        c *= (epsilon-1j*gamma)
+        
+        # calculate the 1/(iwn)^4 contribution to G(iwn)
+        # (batches, N_iwn)
+        G_iwn -= (c[:,:,None]/iwn[None, None,:]**4).sum(1)
+        
+        # Update G(tau=0) based on 1/(iwn)^4 constribution
+        # (batches, 1)
+        G_tau[:,0] += self.coefs[3] * torch.real(c).sum(1)
+        
+        
+        # calculate the 1/(iwn)^5 coefficient
+        # (batches, num_poles)
+        c *= (epsilon-1j*gamma)
+        
+        # calculate the 1/(iwn)^5 contribution to G(iwn)
+        # (batches, N_iwn)
+        G_iwn -= (c[:,:,None]/iwn[None, None,:]**5).sum(1)
+        
+        # Update G(tau=0) based on 1/(iwn)^5 constribution
+        # (batches, 1)
+        G_tau[:,0] += self.coefs[4] * torch.imag(c).sum(1)
+        
 
-        return G_tau, norms
+        # Update G(tau=0) by fourier transforming what is left of G(iwn)
+        # after subtracting of 1/(iwn), ..., 1/(iwn)^5 contributions exactly
+        # (batches, 1)
+        G_tau[:,0] += 2*torch.real(G_iwn.sum(1)/self.beta)
+
+        return G_tau

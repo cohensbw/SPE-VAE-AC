@@ -1,59 +1,29 @@
 import torch
 import torch.nn.functional as F
 
-def vae_loss_1(Gtau_out, Gtau_in, mu, logvar, alpha, eta):
+def vae_loss(poles, residues, Gtau_out, Gtau_in, mu, logvar, alpha, eta0, eta2, std):
     
-    # get the batch size
-    batch_size = Gtau_out.size(0)
+    # get dimension of array containing Green's functions
+    batch_size, Ltau = Gtau_out.shape
     
-    # length of imaginary-time axis
-    Ltau = Gtau_out.size(1)
-    
-    # clipped data
-    Gtau_in  = Gtau_in[:,1:(Ltau-1)]
-    Gtau_out = Gtau_out[:,1:(Ltau-1)]
-    
-    # Reconstruction loss averaged per batch
-    mse_loss = F.mse_loss(Gtau_out, Gtau_in, reduction="sum") / batch_size
+    # add batch dimension of vector of standard deviation for broadasting,
+    # and add floor value to std for numerical regularization purposes
+    std = torch.clamp(std.unsqueeze(0), min = std.max() / 1.0e3)
 
-    # KL divergence averaged per batch
-    logvar_clamped = torch.clamp(logvar, min=-30, max=30)
-    kl_divergence = -0.5 * torch.sum(1 + logvar_clamped - mu.pow(2) - logvar_clamped.exp()) / batch_size
-    
-    # add cost function to promote positivity of spectral function
-    dG2 = torch.diff(Gtau_out,n=2)
-    positivity_errors = torch.sum(F.relu(-dG2)) / batch_size
-    # dG4 = torch.diff(dG2,n=2)
-    # positivity_errors += torch.sum(F.relu(-dG4)) / batch_size
+    # calculate MSE loss
+    dG = Gtau_out - Gtau_in
+    mse_loss = torch.sum((dG / std) ** 2) / (Ltau * batch_size)
 
-    return mse_loss + alpha * kl_divergence + eta * positivity_errors
+    # calculate KD divergence
+    logvar_clamped = torch.clamp(logvar, min=-50, max=50)
+    kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar_clamped.exp()) / batch_size
 
-def vae_loss_2(Gtau_out, Gtau_in, InvCov, mu, logvar, alpha, eta):
-    
-    # get the batch size
-    batch_size = Gtau_out.size(0)
-    
-    # length of imaginary-time axis
-    Ltau = Gtau_out.size(1)
-    
-    # clipped data
-    Gtau_in  = Gtau_in[:,1:(Ltau-1)]
-    Gtau_out = Gtau_out[:,1:(Ltau-1)]
-    
-    # Calculate reconstruction loss weighted by covariance matrix
-    dGtau = Gtau_out - Gtau_in
-    intermediate = dGtau @ InvCov
-    mse_loss = (intermediate * dGtau).sum(dim=1)
-    mse_loss = mse_loss.mean()
+    # penalize the G(tau) curves going negative
+    positivity_error = torch.sum(F.relu(-Gtau_out / std) ** 2) / (Ltau * batch_size)
 
-    # KL divergence averaged per batch
-    logvar_clamped = torch.clamp(logvar, min=-30, max=30)
-    kl_divergence = -0.5 * torch.sum(1 + logvar_clamped - mu.pow(2) - logvar_clamped.exp()) / batch_size
-    
-    # add cost function to promote positivity of spectral function
-    dG2 = torch.diff(Gtau_out,n=2)
-    positivity_errors = torch.sum(F.relu(-dG2)) / batch_size
-    # dG4 = torch.diff(dG2,n=2)
-    # positivity_errors += torch.sum(F.relu(-dG4)) / batch_size
+    # penalize the second derivative of G(tau) curve going negative
+    dG2 = torch.diff(Gtau_out, n=2, dim=-1)
+    dG2_std = torch.sqrt(std[:, :-2] ** 2 + 4 * std[:, 1:-1] ** 2 + std[:, 2:] ** 2)
+    sfd_positivity_error = torch.sum(F.relu(-dG2 / dG2_std) ** 2) / ((Ltau - 2) * batch_size)
 
-    return mse_loss + alpha * kl_divergence + eta * positivity_errors
+    return mse_loss + alpha * kl_divergence + eta0 * positivity_error + eta2 * sfd_positivity_error

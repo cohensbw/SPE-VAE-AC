@@ -4,7 +4,7 @@ from torch import nn
 from utilities.PoleToGreens import PoleToGaussLegendreGreens
 from utilities.layer_stacks import make_conv_stack
 
-class VAE2(nn.Module):
+class VAE(nn.Module):
     
     def __init__(
         self,
@@ -18,8 +18,9 @@ class VAE2(nn.Module):
         encoder_dilations,
         encoder_paddings,
         encoder_padding_mode,
-        
-        quadrature_nodes
+        quadrature_nodes,
+        matsubara_max,
+        dtype
     ):
         
         # call nn.Module __init__() function
@@ -28,7 +29,7 @@ class VAE2(nn.Module):
         # record parameters
         self.beta = beta
         self.dtau = dtau
-        self.Ltau = int(beta/dtau) + 1
+        self.Ltau = int(beta/dtau)
         self.latent_dim = latent_dim
         self.num_poles = num_poles
         
@@ -43,7 +44,7 @@ class VAE2(nn.Module):
             paddings = encoder_paddings,
             dilations = encoder_dilations,
             padding_mode = encoder_padding_mode,
-            activation = nn.Tanh(),
+            activation = nn.LeakyReLU(),
             in_channel = 1,
             bias = False
         )
@@ -68,14 +69,23 @@ class VAE2(nn.Module):
         self.decoder_linear_2 = nn.Linear(2*latent_dim, 4*latent_dim, bias = False)
         # nn.init.xavier_uniform_(self.decoder_linear_2.weight)
         
-        self.decoder_linear_to_poles = nn.Linear(4*latent_dim, 2*self.num_poles, bias = True)
-        # nn.init.xavier_uniform_(self.decoder_linear_to_poles.weight)
-        # nn.init.zeros_(self.decoder_linear_to_poles.bias)
+        self.decoder_linear_to_poles_real = nn.Linear(4*latent_dim, self.num_poles, bias = True)
+        # nn.init.xavier_uniform_(self.decoder_linear_to_poles_real.weight)
+        # nn.init.zeros_(self.decoder_linear_to_poles_real.bias)
         
-        self.decoder_linear_to_residues = nn.Linear(4*latent_dim, 2*self.num_poles, bias = False)
-        # nn.init.xavier_uniform_(self.decoder_linear_to_residues.weight)
+        self.decoder_linear_to_poles_imag = nn.Linear(4*latent_dim, self.num_poles, bias = True)
+        # nn.init.xavier_uniform_(self.decoder_linear_to_poles_real.weight)
+        # nn.init.zeros_(self.decoder_linear_to_poles_real.bias)
         
-        self.pole_to_greens = PoleToGaussLegendreGreens(beta = beta, Ltau = self.Ltau, N_nodes = quadrature_nodes)
+        self.decoder_linear_to_residues_real = nn.Linear(4*latent_dim, self.num_poles, bias = False)
+        # nn.init.xavier_uniform_(self.decoder_linear_to_residues_real.weight)
+        
+        self.decoder_linear_to_residues_imag = nn.Linear(4*latent_dim, self.num_poles, bias = False)
+        # nn.init.xavier_uniform_(self.decoder_linear_to_residues_imag.weight)
+        
+        self.pole_to_greens = PoleToGaussLegendreGreens(
+            beta = beta, dtau = self.dtau, N_nodes = quadrature_nodes, N_iwn = matsubara_max, dtype = dtype
+        )
         
     # z = mu + sigma * eps, with eps ~ N(0, I).
     # note a clamp is applied to logvar to avoid overflow issues.
@@ -91,8 +101,8 @@ class VAE2(nn.Module):
         x = Gtau_in.unsqueeze(1)
         x = self.encoder_conv_stack(x)
         x = torch.flatten(x, start_dim = 1)
-        x = F.tanh(self.encoder_linear_1(x))
-        x = F.tanh(self.encoder_linear_2(x))
+        x = F.leaky_relu(self.encoder_linear_1(x))
+        x = F.leaky_relu(self.encoder_linear_2(x))
         mu = self.encoder_linear_to_mu(x)
         logvar = self.encoder_linear_to_logvar(x)
         
@@ -100,20 +110,24 @@ class VAE2(nn.Module):
     
     def decode(self, z):
         
-        x = F.tanh(self.decoder_linear_1(z))
-        x = F.tanh(self.decoder_linear_2(x))
+        x = F.leaky_relu(self.decoder_linear_1(z))
+        x = F.leaky_relu(self.decoder_linear_2(x))
         
-        epsilon, gamma_sqrt = torch.chunk(self.decoder_linear_to_poles(x), 2, dim=-1)
-        gamma = torch.square(gamma_sqrt)
+        epsilon = self.decoder_linear_to_poles_real(x)
+        gamma = self.decoder_linear_to_poles_imag(x)
+        gamma = torch.square(gamma)
         poles = torch.complex(epsilon, -gamma)
         
-        a_sqrt, b = torch.chunk(self.decoder_linear_to_residues(x), 2, dim=-1)
-        a = torch.square(a_sqrt)
+        a = self.decoder_linear_to_residues_real(x)
+        a = torch.square(a)
         a_sum = a.sum(dim=-1, keepdim=True)
-        a = a / a_sum 
+        a = a / (a_sum + 1e-12)
+        b = self.decoder_linear_to_residues_imag(x)
+        b_mean = b.mean(dim=-1, keepdim=True)
+        b = b - b_mean
         residues = torch.complex(a, b)
         
-        Gtau, norm = self.pole_to_greens(poles, residues)
+        Gtau = self.pole_to_greens(poles, residues)
             
         return Gtau, poles, residues
     

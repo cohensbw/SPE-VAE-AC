@@ -1,4 +1,4 @@
-# # %%
+# %%
 
 # %load_ext autoreload
 # %autoreload 2
@@ -6,26 +6,31 @@
 
 # %%
 
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy import stats
-from scipy import integrate
+
 import torch
+
+dtype = torch.float32
+torch.set_default_dtype(dtype)
+
 import torch.nn.functional as F
 from torch import nn, optim
 import torchvision.datasets as datasets
 from tqdm import tqdm
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from torch import optim
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy import stats
+from scipy import integrate
 
 # %%
 
 from utilities.Datasets import JackknifeGreensDataset, BootstrapGreensDataset, SimpleGreensDataset
-from utilities.train_model_utils import run_epochs, calculate_inv_cov
+from utilities.train_model_utils import run_epochs
 from utilities.generate_predictions import generate_predictions
-from VAE1 import VAE1
-from VAE2 import VAE2
-from VAE3 import VAE3
+from utilities.greens_stats import calculate_cov, calculate_std, calculate_cov_basis_map, calculate_jackknife_cov
+from VAE import VAE
 
 # %%
 
@@ -34,91 +39,75 @@ def spe_spectral(w, poles, residues):
     w = np.expand_dims(w, axis=0)
     poles = np.expand_dims(poles, axis=1)
     residues = np.expand_dims(residues, axis=1)
-    return np.sum(-np.imag(residues/(w-poles))/np.pi, axis=0)
+    return np.sum(np.imag(residues/(poles-w))/np.pi, axis=0)
 
 # %%
 
 # specify dataset
 
-datafile = "./../datasets/half-filled-gaussian/binned_data.csv"
-beta = 10.0
-dtau = 0.05
-Ltau = int(beta / dtau) + 1
-A = lambda w: stats.norm.pdf(w, loc = 0.0, scale = 1.0)
-
-# datafile = "./../datasets/two-asymmetric-gaussians/binned_data.csv"
+# datafile = "./../datasets/half-filled-gaussian/binned_data.csv"
 # beta = 10.0
 # dtau = 0.05
 # Ltau = int(beta / dtau) + 1
-# A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf(w, loc = -2.0, scale = 0.5)
+# A = lambda w: stats.norm.pdf(w, loc = 0.0, scale = 1.0)
+
+datafile = "./../datasets/two-asymmetric-gaussians/binned_data.csv"
+beta = 10.0
+dtau = 0.05
+Ltau = int(beta / dtau) + 1
+A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf(w, loc = -2.0, scale = 0.5)
+
+# datafile = "./../datasets/doped_lorentzian/binned_data.csv"
+# beta = 10.0
+# dtau = 0.05
+# Ltau = int(beta / dtau) + 1
+# A = lambda w: stats.cauchy.pdf(w, loc = -1.0, scale = 0.5)
+
+# %%
+
+std = calculate_std(datafile, of_mean = True)
+std = torch.tensor(std, dtype = dtype)
 
 # %%
 
 # load raw datset
-dataset = SimpleGreensDataset(datafile)
+dataset = SimpleGreensDataset(datafile, dtype = dtype)
 
-# load jackknife dataset
-jackknife_dataset = JackknifeGreensDataset(datafile)
+# Split deterministically (optional: set generator for reproducibility)
+training_dataset, testing_dataset = random_split(dataset, [0.8, 0.2])
 
-# load bootstrap dataset
-bootstrap_dataset = BootstrapGreensDataset(datafile)
-
-# %%
-
-# calculate inverse covariance matrix
-# InvCov = calculate_inv_cov(datafile, rtol = 1e-2, dtype = torch.float32)
-InvCov = None
+# training_dataset = JackknifeGreensDataset(datafile, dtype = dtype)
+# testing_dataset = BootstrapGreensDataset(datafile, dtype = dtype)
 
 # %%
 
-# set the batch size
 batch_size = 50
-
-simple_dataloader = DataLoader(dataset = dataset, batch_size = batch_size, shuffle = True)
-
-jackknife_dataloader = DataLoader(dataset = jackknife_dataset, batch_size = batch_size, shuffle = True)
-
-bootstrap_dataloader = DataLoader(dataset = bootstrap_dataset, batch_size = batch_size, shuffle = True)
+training_dataloader = DataLoader(dataset = training_dataset, batch_size = batch_size, shuffle = True)
+testing_dataloader = DataLoader(dataset = testing_dataset, batch_size = batch_size, shuffle = True)
 
 # %%
 
 # initialize model
-model = VAE2(
+model = VAE(
     beta = beta,
     dtau = dtau,
-    num_poles = 4,
-    latent_dim = 4*4,
+    num_poles = 6,
+    latent_dim = 6*4,
     encoder_channels = [16, 32, 64],
-    encoder_kernel_sizes = [11, 9, 7],
+    encoder_kernel_sizes = [9, 9, 9],
     encoder_strides = [2, 2, 2],
     encoder_dilations = [1, 1, 1],
-    encoder_paddings = [5, 4, 3],
+    encoder_paddings = [4, 4, 4],
     encoder_padding_mode = "reflect",
-    quadrature_nodes = 256
+    quadrature_nodes = 256,
+    matsubara_max = 512,
+    dtype = dtype
 )
-
-# model = VAE3(
-#     beta = beta,
-#     dtau = dtau,
-#     num_poles = 16, 
-#     latent_dim = 16,
-#     encoder_channels = [8, 16, 32],
-#     encoder_kernel_sizes = [11, 9, 7],
-#     encoder_strides = [2, 2, 2],
-#     encoder_dilations = [1, 1, 1],
-#     encoder_paddings = [5, 4, 3],
-#     encoder_padding_mode = "reflect",
-#     encoder_dense_outputs = [],
-#     decoder_dense_outputs = [],
-#     decoder_kernel_sizes = [3],
-#     decoder_padding_mode = "zeros",
-#     quadrature_nodes = 256
-# )
 
 # %%
 # configure training procedure
-init_learning_rate = 3.0e-3
-final_learning_rate = 3.0e-4
+init_learning_rate = 1.0e-3
+final_learning_rate = 1.0e-4
 num_epochs = 100
 weight_decay = 0.0
 
@@ -137,13 +126,14 @@ else:
 # train the model
 training_losses, validation_losses = run_epochs(
     num_epochs = num_epochs,
-    training_dataloader = jackknife_dataloader,
-    validation_dataloader = bootstrap_dataloader,
+    training_dataloader = training_dataloader,
+    validation_dataloader = testing_dataloader,
     optimizer = optimizer,
     model = model,
     alpha = 0.0,
-    eta = 1.0,
-    InvCov = InvCov,
+    eta0 = 1.0,
+    eta2 = 1.0,
+    std = std,
     DEVICE = "cpu",
     scheduler = scheduler
 )
@@ -163,16 +153,16 @@ plt.show()
 
 plt.figure()
 
-plt.plot(np.log(training_losses), c = "b")
-plt.plot(np.log(validation_losses), c = "r")
-
+plt.plot(training_losses, c = "b")
+plt.plot(validation_losses, c = "r")
+plt.yscale("log")
 plt.tight_layout()
 plt.show()
 
 # %%
 
 # generate predictions
-predictions = generate_predictions(model, jackknife_dataset, as_mode = False)
+predictions = generate_predictions(model, training_dataset, as_mode = False)
 poles = predictions[1]
 residues = predictions[2]
 
@@ -181,8 +171,9 @@ residues = predictions[2]
 # calculate prediction given mean Green's function
 model.eval()
 with torch.no_grad():
-    Gtau_mean = torch.mean(jackknife_dataset[:,:], axis = 0)
-    mean_out = model(torch.unsqueeze(Gtau_mean, dim=0))
+    data = torch.stack([training_dataset[i] for i in range(len(training_dataset))])
+    Gtau_mean = data.mean(dim=0).unsqueeze(0)
+    mean_out = model(Gtau_mean)
     Gtau_mean_out = mean_out[0][0].numpy()
     poles_mean = mean_out[1][0].numpy()
     residues_mean = mean_out[2][0].numpy()
@@ -214,7 +205,7 @@ for i in range(len(poles)):
     
 plt.plot(omega, A_omega_mean, color="red")
 plt.plot(omega, A(omega), color="magenta")
-plt.ylim(-0.025, 0.500)
+# plt.ylim(-0.025, 0.500)
 plt.tight_layout()
 plt.show()
 
@@ -224,4 +215,6 @@ plt.show()
 Aout = lambda w: spe_spectral(w, poles_mean, residues_mean)
 MSE_A = lambda w: np.square(Aout(w) - A(w))
 spectral_error, tol = integrate.quad(MSE_A, -np.inf, np.inf, epsabs=1e-10)
-print("|A_out(w) - A(w)|^2 = ", spectral_error)
+print("\int_\infty^\infty dw |A_out(w) - A(w)|^2 = ", spectral_error)
+
+# %%
