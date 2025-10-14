@@ -29,7 +29,7 @@ from scipy import integrate
 from utilities.Datasets import JackknifeGreensDataset, BootstrapGreensDataset, SimpleGreensDataset
 from utilities.train_model_utils import run_epochs
 from utilities.generate_predictions import generate_predictions
-from utilities.greens_stats import calculate_cov, calculate_std, calculate_cov_basis_map, calculate_jackknife_cov
+from utilities.greens_stats import calculate_cov, calculate_std, calculate_cov_basis_map
 from VAE import VAE
 
 # %%
@@ -48,20 +48,26 @@ def spe_spectral(w, poles, residues):
 # datafile = "./../datasets/half-filled-gaussian/binned_data.csv"
 # beta = 10.0
 # dtau = 0.05
-# Ltau = int(beta / dtau) + 1
+# Ltau = int(np.round(beta / dtau))
 # A = lambda w: stats.norm.pdf(w, loc = 0.0, scale = 1.0)
 
-datafile = "./../datasets/two-asymmetric-gaussians/binned_data.csv"
-beta = 10.0
-dtau = 0.05
-Ltau = int(beta / dtau) + 1
-A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf(w, loc = -2.0, scale = 0.5)
+# datafile = "./../datasets/two-asymmetric-gaussians/binned_data.csv"
+# beta = 10.0
+# dtau = 0.05
+# Ltau = int(np.round(beta / dtau))
+# A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf(w, loc = -2.0, scale = 0.5)
 
 # datafile = "./../datasets/doped_lorentzian/binned_data.csv"
 # beta = 10.0
 # dtau = 0.05
-# Ltau = int(beta / dtau) + 1
+# Ltau = int(np.round(beta / dtau))
 # A = lambda w: stats.cauchy.pdf(w, loc = -1.0, scale = 0.5)
+
+datafile = "./../datasets/half-filled-semicircle/binned_data.csv"
+beta = 12.0
+dtau = 0.05
+Ltau = int(np.round(beta / dtau))
+A = lambda w: stats.semicircular.pdf(w, loc = 0.0, scale = 2.0)
 
 # %%
 
@@ -74,7 +80,8 @@ std = torch.tensor(std, dtype = dtype)
 dataset = SimpleGreensDataset(datafile, dtype = dtype)
 
 # Split deterministically (optional: set generator for reproducibility)
-training_dataset, testing_dataset = random_split(dataset, [0.8, 0.2])
+# training_dataset, testing_dataset = random_split(dataset, [0.8, 0.2])
+training_dataset, testing_dataset = dataset, dataset
 
 # training_dataset = JackknifeGreensDataset(datafile, dtype = dtype)
 # testing_dataset = BootstrapGreensDataset(datafile, dtype = dtype)
@@ -106,8 +113,8 @@ model = VAE(
 
 # %%
 # configure training procedure
-init_learning_rate = 3.0e-3
-final_learning_rate = 3.0e-4
+init_learning_rate = 1.0e-3
+final_learning_rate = 1.0e-4
 num_epochs = 100
 weight_decay = 0.0
 
@@ -131,8 +138,8 @@ training_losses, validation_losses = run_epochs(
     optimizer = optimizer,
     model = model,
     alpha = 0.0,
-    eta0 = 1.0e-1,
-    eta2 = 1.0e-1,
+    eta0 = 0.5,
+    eta2 = 0.5,
     std = std,
     DEVICE = "cpu",
     scheduler = scheduler

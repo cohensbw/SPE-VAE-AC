@@ -1,22 +1,12 @@
 import numpy as np
 
-def calculate_cov(datafile):
+def calculate_cov(datafile, of_mean = True):
     
     samples = np.loadtxt(datafile, delimiter=",")
     samples = samples[:,0:-1] # trim tau = beta point
     Cov = np.cov(samples.T)
-    Cov = Cov
-    
-    return Cov
-
-def calculate_jackknife_cov(datafile):
-    
-    samples = np.loadtxt(datafile, delimiter=",")
-    N = samples.shape[0]
-    samples = samples[:,0:-1] # trim tau = beta point
-    sample_mean = np.mean(samples, axis=0)
-    samples = (N*sample_mean - samples)/(N-1)
-    Cov = np.cov(samples.T)
+    if of_mean:
+        Cov = Cov / samples.shape[0]
     
     return Cov
 
@@ -30,16 +20,26 @@ def calculate_std(datafile, of_mean = True):
     
     return std
 
-def calculate_cov_basis_map(Cov, rtol = 1e-4):
+import numpy as np
+
+def calculate_cov_basis_map(Cov, rtol=1e-8):
     
-    U, s, Vh = np.linalg.svd(Cov, compute_uv=True, full_matrices=False, hermitian=True)
-    e = np.sqrt(s)
+    # Eigen-decomposition (since Cov is Hermitian)
+    eigvals, eigvecs = np.linalg.eigh(Cov)
+    
+    # Clip small negative values (from rounding) to zero
+    eigvals = np.clip(eigvals, 0, None)
+    
+    # Keep only large enough modes
+    e = np.sqrt(eigvals)
     emax = e.max()
-    mask = (e >= rtol*emax)
+    mask = e >= rtol * emax
+    
     e = e[mask]
-    Vh = Vh[mask,:]
-    U = U[:,mask]
-    inv_sqrt_Cov = U @ np.diag(1/e) @ Vh
-    inv_sqrt_Cov = inv_sqrt_Cov / np.sqrt(len(e))
+    U = eigvecs[:, mask]
+    
+    # Construct inverse sqrt(Cov)
+    inv_sqrt_Cov = U @ np.diag(1 / e) @ U.T.conj()
+    
     return inv_sqrt_Cov
     

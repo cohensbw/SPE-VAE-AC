@@ -44,7 +44,7 @@ class VAE(nn.Module):
             paddings = encoder_paddings,
             dilations = encoder_dilations,
             padding_mode = encoder_padding_mode,
-            activation = nn.Tanh(),
+            activation = nn.LeakyReLU(),
             in_channel = 1,
             bias = False
         )
@@ -91,8 +91,8 @@ class VAE(nn.Module):
         x = Gtau_in.unsqueeze(1)
         x = self.encoder_conv_stack(x)
         x = torch.flatten(x, start_dim = 1)
-        x = F.tanh(self.encoder_linear_1(x))
-        x = F.tanh(self.encoder_linear_2(x))
+        x = F.leaky_relu(self.encoder_linear_1(x))
+        x = F.leaky_relu(self.encoder_linear_2(x))
         mu = self.encoder_linear_to_mu(x)
         logvar = self.encoder_linear_to_logvar(x)
         
@@ -100,8 +100,8 @@ class VAE(nn.Module):
     
     def decode(self, z):
         
-        x = F.tanh(self.decoder_linear_1(z))
-        x = F.tanh(self.decoder_linear_2(x))
+        x = F.leaky_relu(self.decoder_linear_1(z))
+        x = F.leaky_relu(self.decoder_linear_2(x))
         
         epsilon = self.decoder_linear_to_poles_real(x)
         gamma = self.decoder_linear_to_poles_imag(x)
