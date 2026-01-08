@@ -86,7 +86,39 @@ class PoleToGaussLegendreGreens(nn.Module):
         integrand = integrand.sum(dim = 1)
 
         # perform gaussian quadrature outputting shape (batch, Ltau)
-        G_tau = torch.matmul(integrand, self.weights)
+        G_tau = torch.matmul(integrand, self.weights).real
+        
+        # # initialize output
+        # B, P = poles.shape
+        # L = self.Ltau
+        # G_tau = torch.zeros(B, L, device=poles.device, dtype=poles.real.dtype)
+
+        # # loop over Gauss-Legendre nodes (small N_nodes ~ 256 is fine)
+        # for n in range(self.nodes.shape[0]):
+            
+        #     phi_n = self.phi[n]        # scalar
+        #     w_n = self.weights[n]      # scalar
+
+        #     # omegas and numerator for this node: (B,P)
+        #     omegas_n = epsilon + gamma * phi_n
+        #     numerator_n = 0.5 * (a - b * phi_n)
+
+        #     # broadcast taus: (B,P,L)
+        #     taus_bpl = self.taus[None, None, :] * omegas_n[:, :, None]
+        #     taus_bpl_beta = (self.taus[None, None, :] - self.beta) * omegas_n[:, :, None]
+
+        #     # clamp to avoid overflow
+        #     arg1 = torch.clamp(taus_bpl, min=-50.0, max=50.0)
+        #     arg2 = torch.clamp(taus_bpl_beta, min=-50.0, max=50.0)
+
+        #     # denominator: (B,P,L)
+        #     denom = torch.exp(arg1) + torch.exp(arg2)
+
+        #     # integrand: (B,P,L)
+        #     integrand = numerator_n[:, :, None] / denom
+
+        #     # sum over poles and accumulate weighted contribution
+        #     G_tau += w_n * integrand.sum(dim=1)  # sum over P
         
         # COMPUTE G(tau) FOR tau = 0
         

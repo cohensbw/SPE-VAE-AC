@@ -18,7 +18,9 @@ class VAE1(nn.Module):
         encoder_dilations,
         encoder_paddings,
         encoder_padding_mode,
-        quadrature_nodes
+        quadrature_nodes,
+        matsubara_max,
+        dtype
     ):
         
         # call nn.Module __init__() function
@@ -27,7 +29,7 @@ class VAE1(nn.Module):
         # record parameters
         self.beta = beta
         self.dtau = dtau
-        self.Ltau = int(beta/dtau) + 1
+        self.Ltau = int(beta/dtau)
         self.latent_dim = latent_dim
         self.num_poles = num_poles
         
@@ -47,18 +49,31 @@ class VAE1(nn.Module):
             bias = False
         )
                 
-        self.encoder_linear_1 = nn.Linear(encoder_channels[-1]*L, encoder_channels[-1]*latent_dim, bias = False)
-        self.encoder_linear_2 = nn.Linear(encoder_channels[-1]*latent_dim, latent_dim, bias = False)
+        self.encoder_linear_1 = nn.Linear(encoder_channels[-1]*L, encoder_channels[-1]*latent_dim, bias = False)        
+        self.encoder_linear_2 = nn.Linear(encoder_channels[-1]*latent_dim, latent_dim, bias = False)        
         self.encoder_linear_to_mu = nn.Linear(latent_dim, latent_dim, bias = False)
+        
         self.encoder_linear_to_logvar = nn.Linear(latent_dim, latent_dim, bias = False)
         
         # DECODER LAYERS
         
         self.decoder_linear_1 = nn.Linear(latent_dim, 2*latent_dim, bias = False)
+        
         self.decoder_linear_2 = nn.Linear(2*latent_dim, 4*latent_dim, bias = False)
-        self.decoder_linear_to_poles = nn.Linear(4*latent_dim, 2*self.num_poles, bias = True)
-        self.decoder_linear_to_residues = nn.Linear(4*latent_dim, 2*self.num_poles, bias = False)
-        self.pole_to_greens = PoleToGaussLegendreGreens(beta = beta, Ltau = self.Ltau, N_nodes = quadrature_nodes)
+        
+        self.decoder_linear_to_poles_real = nn.Linear(4*latent_dim, num_poles, bias = True)
+        nn.init.zeros_(self.decoder_linear_to_poles_real.bias)
+        
+        self.decoder_linear_to_poles_imag = nn.Linear(4*latent_dim, num_poles, bias = True)
+        nn.init.zeros_(self.decoder_linear_to_poles_imag.bias)
+        
+        self.decoder_linear_to_residues_real = nn.Linear(4*latent_dim, num_poles, bias = False)
+        
+        self.decoder_linear_to_residues_imag = nn.Linear(4*latent_dim, num_poles, bias = False)
+        
+        self.pole_to_greens = PoleToGaussLegendreGreens(
+            beta = beta, dtau = self.dtau, N_nodes = quadrature_nodes, N_iwn = matsubara_max, dtype = dtype
+        )
         
     # z = mu + sigma * eps, with eps ~ N(0, I).
     # note a clamp is applied to logvar to avoid overflow issues.
@@ -86,15 +101,21 @@ class VAE1(nn.Module):
         x = F.leaky_relu(self.decoder_linear_1(z))
         x = F.leaky_relu(self.decoder_linear_2(x))
         
-        epsilon, gamma = torch.chunk(self.decoder_linear_to_poles(x), 2, dim=-1)
-        poles = torch.complex(epsilon, -torch.abs(gamma))
+        epsilon = self.decoder_linear_to_poles_real(x)
+        gamma = self.decoder_linear_to_poles_imag(x)
+        gamma = torch.abs(gamma)
+        poles = torch.complex(epsilon, -gamma)
         
-        a, b = torch.chunk(self.decoder_linear_to_residues(x), 2, dim=-1)
+        a = self.decoder_linear_to_residues_real(x)
+        a = torch.abs(a)
         a_sum = a.sum(dim=-1, keepdim=True)
-        a = a / (a_sum + 1e-12)  
+        a = a / (a_sum + 1e-12)
+        b = self.decoder_linear_to_residues_imag(x)
+        b_mean = b.mean(dim=-1, keepdim=True)
+        b = b - b_mean
         residues = torch.complex(a, b)
         
-        Gtau, norm = self.pole_to_greens(poles, residues)
+        Gtau = self.pole_to_greens(poles, residues)
             
         return Gtau, poles, residues
     

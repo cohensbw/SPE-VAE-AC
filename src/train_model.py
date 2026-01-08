@@ -1,14 +1,14 @@
 # %%
 
-# %load_ext autoreload
-# %autoreload 2
-# %matplotlib widget
+%load_ext autoreload
+%autoreload 2
+%matplotlib widget
 
 # %%
 
-
 import torch
 
+torch.backends.mps.enable_fallback = False
 dtype = torch.float32
 torch.set_default_dtype(dtype)
 
@@ -29,8 +29,8 @@ from scipy import integrate
 from utilities.Datasets import JackknifeGreensDataset, BootstrapGreensDataset, SimpleGreensDataset
 from utilities.train_model_utils import run_epochs
 from utilities.generate_predictions import generate_predictions
-from utilities.greens_stats import calculate_cov, calculate_std, calculate_cov_basis_map
-from VAE import VAE
+from utilities.greens_stats import calculate_var_and_derivatives, calculate_cov_and_derivatives
+from VAE1 import VAE1
 
 # %%
 
@@ -51,11 +51,11 @@ def spe_spectral(w, poles, residues):
 # Ltau = int(np.round(beta / dtau))
 # A = lambda w: stats.norm.pdf(w, loc = 0.0, scale = 1.0)
 
-# datafile = "./../datasets/two-asymmetric-gaussians/binned_data.csv"
-# beta = 10.0
-# dtau = 0.05
-# Ltau = int(np.round(beta / dtau))
-# A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf(w, loc = -2.0, scale = 0.5)
+datafile = "./../datasets/two-asymmetric-gaussians/binned_data.csv"
+beta = 10.0
+dtau = 0.05
+Ltau = int(np.round(beta / dtau))
+A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf(w, loc = -2.0, scale = 0.5)
 
 # datafile = "./../datasets/doped_lorentzian/binned_data.csv"
 # beta = 10.0
@@ -63,20 +63,33 @@ def spe_spectral(w, poles, residues):
 # Ltau = int(np.round(beta / dtau))
 # A = lambda w: stats.cauchy.pdf(w, loc = -1.0, scale = 0.5)
 
-datafile = "./../datasets/half-filled-semicircle/binned_data.csv"
-beta = 12.0
-dtau = 0.05
-Ltau = int(np.round(beta / dtau))
-A = lambda w: stats.semicircular.pdf(w, loc = 0.0, scale = 2.0)
+# datafile = "./../datasets/half-filled-semicircle/binned_data.csv"
+# beta = 12.0
+# dtau = 0.05
+# Ltau = int(np.round(beta / dtau))
+# A = lambda w: stats.semicircular.pdf(w, loc = 0.0, scale = 2.0)
 
 # %%
 
-std = calculate_std(datafile, of_mean = False)
-std = torch.tensor(std, dtype = dtype)
+# calculate variance of G(tau) and its second and fourth central finite differences
+# var_0, var_2, var_4 = calculate_var_and_derivatives(datafile, eps = 1e-6)
+# inv_var_0 = 1.0 / var_0
+# inv_var_2 = 1.0 / var_2
+# inv_var_4 = 1.0 / var_4
+# inv_var_0 = torch.tensor(inv_var_0, dtype = dtype)
+# inv_var_2 = torch.tensor(inv_var_2, dtype = dtype)
+# inv_var_4 = torch.tensor(inv_var_4, dtype = dtype)
+
+# calculate covariance matrices
+W, var0, var2, var4 = calculate_cov_and_derivatives(datafile, variance_threshold = 0.99)
+W = torch.tensor(W, dtype = dtype)
+var0 = torch.tensor(var0, dtype = dtype)
+var2 = torch.tensor(var2, dtype = dtype)
+var4 = torch.tensor(var4, dtype = dtype)
 
 # %%
 
-# load raw datset
+# load raw dataset
 dataset = SimpleGreensDataset(datafile, dtype = dtype)
 
 # Split deterministically (optional: set generator for reproducibility)
@@ -95,11 +108,11 @@ testing_dataloader = DataLoader(dataset = testing_dataset, batch_size = batch_si
 # %%
 
 # initialize model
-model = VAE(
+model = VAE1(
     beta = beta,
     dtau = dtau,
     num_poles = 8,
-    latent_dim = 4*8-2,
+    latent_dim = (4*8-2),
     encoder_channels = [16, 32, 64],
     encoder_kernel_sizes = [9, 9, 9],
     encoder_strides = [2, 2, 2],
@@ -112,6 +125,7 @@ model = VAE(
 )
 
 # %%
+
 # configure training procedure
 init_learning_rate = 1.0e-3
 final_learning_rate = 1.0e-4
@@ -128,29 +142,38 @@ else:
     gamma = (final_learning_rate/init_learning_rate)**(1/num_epochs)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
 
-
 # %%
+
 # train the model
-training_losses, validation_losses = run_epochs(
+(
+    training_total_losses, training_mse_losses, training_kl_losses,
+    training_negativity_loss_0, training_negativity_loss_2, training_negativity_loss_4,
+    validation_total_losses, validation_mse_losses, validation_kl_losses,
+    validation_negativity_loss_0, validation_negativity_loss_2, validation_negativity_loss_4
+) = run_epochs(
+    DEVICE = "cpu",
+    scheduler = scheduler,
     num_epochs = num_epochs,
     training_dataloader = training_dataloader,
     validation_dataloader = testing_dataloader,
     optimizer = optimizer,
     model = model,
-    alpha = 0.0,
-    eta0 = 0.5,
-    eta2 = 0.5,
-    std = std,
-    DEVICE = "cpu",
-    scheduler = scheduler
+    alpha = 0.00,
+    eta0 = 1.00,
+    eta2 = 1.00,
+    eta4 = 0.00,
+    W = W,
+    var0 = var0,
+    var2 = var2,
+    var4 = var4
 )
 
 # %%
 
 plt.figure()
 
-plt.plot(training_losses, c = "b")
-plt.plot(validation_losses, c = "r")
+plt.plot(training_total_losses, c = "b")
+plt.plot(validation_total_losses, c = "r")
 
 plt.tight_layout()
 plt.show()
@@ -160,8 +183,8 @@ plt.show()
 
 plt.figure()
 
-plt.plot(training_losses, c = "b")
-plt.plot(validation_losses, c = "r")
+plt.plot(training_total_losses, c = "b")
+plt.plot(validation_total_losses, c = "r")
 plt.yscale("log")
 plt.tight_layout()
 plt.show()
@@ -180,7 +203,8 @@ model.eval()
 with torch.no_grad():
     data = torch.stack([training_dataset[i] for i in range(len(training_dataset))])
     Gtau_mean = data.mean(dim=0).unsqueeze(0)
-    mean_out = model(Gtau_mean)
+    # mean_out = model(Gtau_mean)
+    mean_out = model.mode_forward(Gtau_mean)
     Gtau_mean_out = mean_out[0][0].numpy()
     poles_mean = mean_out[1][0].numpy()
     residues_mean = mean_out[2][0].numpy()

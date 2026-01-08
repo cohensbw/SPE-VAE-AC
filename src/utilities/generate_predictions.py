@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn
 
-# get preditions for trained VAE mode.
+# get predictions for trained VAE mode.
 # This assumes a mode_forward method is defined for the VAE model.
 def generate_predictions(model, dataset, device="cpu", batch_size = 1, as_mode=True, predictions_per_sample=1):
     
