@@ -4,7 +4,7 @@ from torch import nn
 from utilities.PoleToGreens import PoleToGaussLegendreGreens
 from utilities.layer_stacks import make_conv_stack
 
-class VAE1(nn.Module):
+class VAE3(nn.Module):
     
     def __init__(
         self,
@@ -16,8 +16,6 @@ class VAE1(nn.Module):
         encoder_kernel_sizes,
         encoder_strides,
         encoder_dilations,
-        encoder_paddings,
-        encoder_padding_mode,
         quadrature_nodes,
         matsubara_max,
         dtype
@@ -37,13 +35,13 @@ class VAE1(nn.Module):
         
         # initialize convolutional stack
         self.encoder_conv_stack, L = make_conv_stack(
-            L = self.Ltau,
+            L = 2 * self.Ltau,
             out_channels = encoder_channels,
             kernel_sizes = encoder_kernel_sizes,
             strides = encoder_strides,
-            paddings = encoder_paddings,
+            paddings = [p//2 for p in encoder_kernel_sizes],
             dilations = encoder_dilations,
-            padding_mode = encoder_padding_mode,
+            padding_mode = "circular",
             activation = nn.LeakyReLU(),
             in_channel = 1,
             bias = False
@@ -86,7 +84,8 @@ class VAE1(nn.Module):
     
     def encode(self, Gtau_in):
         
-        x = Gtau_in.unsqueeze(1)
+        x = torch.cat([Gtau_in, -Gtau_in], dim = 1)
+        x = x.unsqueeze(1)
         x = self.encoder_conv_stack(x)
         x = torch.flatten(x, start_dim = 1)
         x = F.leaky_relu(self.encoder_linear_1(x))

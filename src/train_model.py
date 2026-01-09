@@ -31,6 +31,7 @@ from utilities.train_model_utils import run_epochs
 from utilities.generate_predictions import generate_predictions
 from utilities.greens_stats import calculate_var_and_derivatives, calculate_cov_and_derivatives
 from VAE1 import VAE1
+from VAE3 import VAE3
 
 # %%
 
@@ -124,11 +125,25 @@ model = VAE1(
     dtype = dtype
 )
 
+# model = VAE3(
+#     beta = beta,
+#     dtau = dtau,
+#     num_poles = 8,
+#     latent_dim = (4*8-2),
+#     encoder_channels = [16, 32, 64],
+#     encoder_kernel_sizes = [9, 9, 9],
+#     encoder_strides = [2, 2, 2],
+#     encoder_dilations = [1, 1, 1],
+#     quadrature_nodes = 256,
+#     matsubara_max = 256,
+#     dtype = dtype
+# )
+
 # %%
 
 # configure training procedure
-init_learning_rate = 1.0e-3
-final_learning_rate = 1.0e-4
+init_learning_rate = 3.0e-3
+final_learning_rate = 3.0e-4
 num_epochs = 100
 weight_decay = 0.0
 
@@ -159,9 +174,9 @@ else:
     optimizer = optimizer,
     model = model,
     alpha = 0.00,
-    eta0 = 1.00,
-    eta2 = 1.00,
-    eta4 = 0.00,
+    eta0 = 1.0,
+    eta2 = 1.0,
+    eta4 = 0.0,
     W = W,
     var0 = var0,
     var2 = var2,

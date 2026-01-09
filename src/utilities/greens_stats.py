@@ -126,37 +126,41 @@ def calculate_cov_and_derivatives(datafile, variance_threshold=0.99):
     w_trunc = w_sorted[:n_components]
     V_trunc = V_sorted[:, :n_components]
     W = V_trunc @ np.diag(1/np.sqrt(w_trunc)) * np.sqrt(n_components)
-    C = V @ np.diag(w) @ V.T  # Reconstruct regularized covariance
+    C = V_trunc @ np.diag(w_trunc) @ V_trunc.T  # Reconstruct regularized covariance
     
     # variances
     var0 = np.diag(C)
 
-    # --- Second derivative operator ---
-    D2 = np.zeros((Ltau-2, Ltau))
-    for i in range(Ltau-2):
-        D2[i, i]   = 1.0
-        D2[i, i+1] = -2.0
-        D2[i, i+2] = 1.0
+    # # --- Second derivative operator ---
+    # D2 = np.zeros((Ltau-2, Ltau))
+    # for i in range(Ltau-2):
+    #     D2[i, i]   = 1.0
+    #     D2[i, i+1] = -2.0
+    #     D2[i, i+2] = 1.0
 
-    # Covariance of second derivative
-    C2 = D2 @ C @ D2.T
+    # # Covariance of second derivative
+    # C2 = D2 @ C @ D2.T
     
-    # variances
-    var2 = np.diag(C2)
-
-    # --- Fourth derivative operator ---
-    D4 = np.zeros((Ltau-4, Ltau))
-    for i in range(Ltau-4):
-        D4[i, i]   = 1.0
-        D4[i, i+1] = -4.0
-        D4[i, i+2] = 6.0
-        D4[i, i+3] = -4.0
-        D4[i, i+4] = 1.0
-
-    # Covariance of fourth derivative
-    C4 = D4 @ C @ D4.T
+    # # variances
+    # var2 = np.diag(C2)
     
-    # variances
-    var4 = np.diag(C4)
+    var2 = var0[2:] + 4 * var0[1:-1] + var0[:-2]
+
+    # # --- Fourth derivative operator ---
+    # D4 = np.zeros((Ltau-4, Ltau))
+    # for i in range(Ltau-4):
+    #     D4[i, i]   = 1.0
+    #     D4[i, i+1] = -4.0
+    #     D4[i, i+2] = 6.0
+    #     D4[i, i+3] = -4.0
+    #     D4[i, i+4] = 1.0
+
+    # # Covariance of fourth derivative
+    # C4 = D4 @ C @ D4.T
+    
+    # # variances
+    # var4 = np.diag(C4)
+    
+    var4 = var0[4:] + 16 * var0[3:-1] + 36 * var0[2:-2] + 16 * var0[1:-3] + var0[:-4]
     
     return W, var0, var2, var4
