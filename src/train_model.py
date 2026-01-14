@@ -82,8 +82,8 @@ A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf
 # inv_var_4 = torch.tensor(inv_var_4, dtype = dtype)
 
 # calculate covariance matrices
-W, var0, var2, var4 = calculate_cov_and_derivatives(datafile, variance_threshold = 0.99)
-W = torch.tensor(W, dtype = dtype)
+C, sqrt_C, inv_sqrt_C, n_components, var0, var2, var4 = calculate_cov_and_derivatives(datafile, variance_threshold = 0.999)
+inv_sqrt_C = torch.tensor(inv_sqrt_C, dtype = dtype)
 var0 = torch.tensor(var0, dtype = dtype)
 var2 = torch.tensor(var2, dtype = dtype)
 var4 = torch.tensor(var4, dtype = dtype)
@@ -109,41 +109,41 @@ testing_dataloader = DataLoader(dataset = testing_dataset, batch_size = batch_si
 # %%
 
 # initialize model
-model = VAE1(
-    beta = beta,
-    dtau = dtau,
-    num_poles = 8,
-    latent_dim = (4*8-2),
-    encoder_channels = [16, 32, 64],
-    encoder_kernel_sizes = [9, 9, 9],
-    encoder_strides = [2, 2, 2],
-    encoder_dilations = [1, 1, 1],
-    encoder_paddings = [4, 4, 4],
-    encoder_padding_mode = "reflect",
-    quadrature_nodes = 256,
-    matsubara_max = 256,
-    dtype = dtype
-)
-
-# model = VAE3(
+# model = VAE1(
 #     beta = beta,
 #     dtau = dtau,
 #     num_poles = 8,
 #     latent_dim = (4*8-2),
 #     encoder_channels = [16, 32, 64],
-#     encoder_kernel_sizes = [9, 9, 9],
+#     encoder_kernel_sizes = [11, 9, 7],
 #     encoder_strides = [2, 2, 2],
 #     encoder_dilations = [1, 1, 1],
+#     encoder_paddings = [5, 4, 3],
+#     encoder_padding_mode = "reflect",
 #     quadrature_nodes = 256,
 #     matsubara_max = 256,
 #     dtype = dtype
 # )
 
+model = VAE3(
+    beta = beta,
+    dtau = dtau,
+    num_poles = 10,
+    latent_dim = (4*10-2),
+    encoder_channels = [16, 32, 64],
+    encoder_kernel_sizes = [9, 9, 9],
+    encoder_strides = [2, 2, 2],
+    encoder_dilations = [1, 1, 1],
+    quadrature_nodes = 256,
+    matsubara_max = 256,
+    dtype = dtype
+)
+
 # %%
 
 # configure training procedure
-init_learning_rate = 3.0e-3
-final_learning_rate = 3.0e-4
+init_learning_rate = 1.0e-3
+final_learning_rate = 1.0e-4
 num_epochs = 100
 weight_decay = 0.0
 
@@ -173,11 +173,11 @@ else:
     validation_dataloader = testing_dataloader,
     optimizer = optimizer,
     model = model,
-    alpha = 0.00,
+    alpha = 1e-5,
     eta0 = 1.0,
     eta2 = 1.0,
-    eta4 = 0.0,
-    W = W,
+    eta4 = 1.0,
+    inv_sqrt_C = inv_sqrt_C,
     var0 = var0,
     var2 = var2,
     var4 = var4
