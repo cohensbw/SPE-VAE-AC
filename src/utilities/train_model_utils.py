@@ -153,6 +153,7 @@ def run_epochs(
     eta0,
     eta2,
     eta4,
+    checkpoint_file="best_model.pt",
     **kwargs
 ):
     training_total_losses = np.zeros(num_epochs)
@@ -168,6 +169,10 @@ def run_epochs(
     validation_negativity_loss_0 = np.zeros(num_epochs)
     validation_negativity_loss_2 = np.zeros(num_epochs)
     validation_negativity_loss_4 = np.zeros(num_epochs)
+
+    # initialize variables for recording best model
+    best_val_loss = float("inf")
+    best_epoch = -1
 
     for epoch in range(num_epochs):
         
@@ -211,6 +216,19 @@ def run_epochs(
             eta4,
             **kwargs
         )
+
+        # record minimum loss model
+        current_val_loss = validation_total_losses[epoch]
+        if current_val_loss < best_val_loss:
+
+            best_val_loss = current_val_loss
+            best_epoch = epoch
+            torch.save(model.state_dict(), checkpoint_file)
+
+            tqdm.write(
+                f"✓ Saved new best model at epoch {epoch + 1} "
+                f"(val loss = {best_val_loss:.3e})"
+            )
         
         if scheduler is not None:
             scheduler.step()
@@ -238,5 +256,6 @@ def run_epochs(
         training_total_losses, training_mse_losses, training_kl_losses,
         training_negativity_loss_0, training_negativity_loss_2, training_negativity_loss_4,
         validation_total_losses, validation_mse_losses, validation_kl_losses,
-        validation_negativity_loss_0, validation_negativity_loss_2, validation_negativity_loss_4
+        validation_negativity_loss_0, validation_negativity_loss_2, validation_negativity_loss_4,
+        best_epoch, best_val_loss
     )

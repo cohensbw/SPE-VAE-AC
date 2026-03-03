@@ -214,3 +214,6 @@ datasets/
 *.csv
 *.ipynb_checkpoints
 *.ipynb
+
+# ignore saved models
+*.pt

@@ -50,10 +50,12 @@ def vae_loss(
     # calculate MSE loss
     dG = Gtau_out - Gtau_in
     dG_white = dG @ inv_sqrt_C
-    mse_loss = torch.mean(torch.sum(dG_white**2, dim=1) / Ltau)
+    mse_loss = 1.0 * torch.mean(torch.sum(dG_white**2, dim=1) / Ltau)
+    # (Gout(tau)-Gin(tau))*inv(C)*(Gout(tau)-Gin(tau))
+    # = |(Gout(tau)-Gin(tau))*inv(sqrt(C))|^2
     
     # KL divergence loss
-    logvar_clamped = torch.clamp(logvar, min=-50, max=50)
+    logvar_clamped = torch.clamp(logvar, min=-25, max=25)
     kl_divergence = -0.5 * torch.sum(1 + logvar_clamped - mu.pow(2) - logvar_clamped.exp()) / batch_size
     kl_loss = alpha * kl_divergence
 

@@ -79,10 +79,11 @@ class VAE1(nn.Module):
     # note a clamp is applied to logvar to avoid overflow issues.
     def reparameterize(self, mu, logvar):
         
-        logvar_clamped = torch.clamp(logvar, min=-50, max=50)
+        logvar_clamped = torch.clamp(logvar, min=-25, max=25)
         std = torch.exp(0.5 * logvar_clamped)
         r = torch.randn_like(std)
-        return mu + std * r
+        z = mu + std * r
+        return z
     
     def encode(self, Gtau_in):
         
@@ -121,6 +122,7 @@ class VAE1(nn.Module):
     
     def forward(self, Gtau_in):
         
+        # G(tau) ==> mu, (var > 0) -> (var = 0)
         mu, logvar = self.encode(Gtau_in)
         z = self.reparameterize(mu, logvar)
         Gtau_out, poles, residues = self.decode(z)
@@ -132,6 +134,7 @@ class VAE1(nn.Module):
     def mode_forward(self, Gtau_in):
         
         mu, logvar = self.encode(Gtau_in)
+        logvar_clamped = torch.clamp(logvar, min=-25, max=25)
         Gtau_out, poles, residues = self.decode(mu)
         
-        return Gtau_out, poles, residues, mu, logvar
+        return Gtau_out, poles, residues, mu, logvar_clamped

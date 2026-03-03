@@ -82,7 +82,7 @@ A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf
 # inv_var_4 = torch.tensor(inv_var_4, dtype = dtype)
 
 # calculate covariance matrices
-C, sqrt_C, inv_sqrt_C, n_components, var0, var2, var4 = calculate_cov_and_derivatives(datafile, variance_threshold = 0.999)
+C, sqrt_C, inv_sqrt_C, n_components, var0, var2, var4 = calculate_cov_and_derivatives(datafile, variance_threshold = 0.99)
 inv_sqrt_C = torch.tensor(inv_sqrt_C, dtype = dtype)
 var0 = torch.tensor(var0, dtype = dtype)
 var2 = torch.tensor(var2, dtype = dtype)
@@ -109,42 +109,42 @@ testing_dataloader = DataLoader(dataset = testing_dataset, batch_size = batch_si
 # %%
 
 # initialize model
-# model = VAE1(
-#     beta = beta,
-#     dtau = dtau,
-#     num_poles = 8,
-#     latent_dim = (4*8-2),
-#     encoder_channels = [16, 32, 64],
-#     encoder_kernel_sizes = [11, 9, 7],
-#     encoder_strides = [2, 2, 2],
-#     encoder_dilations = [1, 1, 1],
-#     encoder_paddings = [5, 4, 3],
-#     encoder_padding_mode = "reflect",
-#     quadrature_nodes = 256,
-#     matsubara_max = 256,
-#     dtype = dtype
-# )
-
-model = VAE3(
+model = VAE1(
     beta = beta,
     dtau = dtau,
-    num_poles = 10,
-    latent_dim = (4*10-2),
+    num_poles = 8,
+    latent_dim = (8*4-2),
     encoder_channels = [16, 32, 64],
     encoder_kernel_sizes = [9, 9, 9],
     encoder_strides = [2, 2, 2],
     encoder_dilations = [1, 1, 1],
+    encoder_paddings = [4, 4, 4],
+    encoder_padding_mode = "reflect",
     quadrature_nodes = 256,
     matsubara_max = 256,
     dtype = dtype
 )
 
+# model = VAE3(
+#     beta = beta,
+#     dtau = dtau,
+#     num_poles = 8,
+#     latent_dim = (4*8-2),
+#     encoder_channels = [16, 32, 64],
+#     encoder_kernel_sizes = [9, 9, 9],
+#     encoder_strides = [2, 2, 2],
+#     encoder_dilations = [1, 1, 1],
+#     quadrature_nodes = 256,
+#     matsubara_max = 256,
+#     dtype = dtype
+# )
+
 # %%
 
 # configure training procedure
-init_learning_rate = 1.0e-3
-final_learning_rate = 1.0e-4
-num_epochs = 100
+init_learning_rate = 1e-3
+final_learning_rate = 1e-3
+num_epochs = 50
 weight_decay = 0.0
 
 # initialize optimizer
@@ -164,7 +164,8 @@ else:
     training_total_losses, training_mse_losses, training_kl_losses,
     training_negativity_loss_0, training_negativity_loss_2, training_negativity_loss_4,
     validation_total_losses, validation_mse_losses, validation_kl_losses,
-    validation_negativity_loss_0, validation_negativity_loss_2, validation_negativity_loss_4
+    validation_negativity_loss_0, validation_negativity_loss_2, validation_negativity_loss_4,
+    best_epoch, best_val_loss
 ) = run_epochs(
     DEVICE = "cpu",
     scheduler = scheduler,
@@ -173,15 +174,28 @@ else:
     validation_dataloader = testing_dataloader,
     optimizer = optimizer,
     model = model,
-    alpha = 1e-5,
+    alpha = 1e-6,
     eta0 = 1.0,
     eta2 = 1.0,
-    eta4 = 1.0,
+    eta4 = 0.0,
+    checkpoint_file="best_model.pt",
     inv_sqrt_C = inv_sqrt_C,
     var0 = var0,
     var2 = var2,
     var4 = var4
 )
+
+# %%
+
+# load best model
+model_state = torch.load("best_model.pt", map_location="cpu")
+model.load_state_dict(model_state)
+
+print(
+    f"Loaded model from epoch {best_epoch + 1} "
+    f"with val loss {best_val_loss:.3e}"
+)
+
 
 # %%
 
