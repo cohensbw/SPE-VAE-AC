@@ -7,10 +7,12 @@ from torch.utils.data import Dataset
 # construct a dataset of the jackknife sample means of the read in samples
 class SimpleGreensDataset(Dataset):
     
-    def __init__(self, filepath, transform=None, dtype = torch.float32):
+    def __init__(self, filepath, transform=None, dtype = torch.float32, trim_beta = True):
         
         # trim off tau = beta value
-        samples = np.loadtxt(filepath, delimiter=",")[:,0:-1]
+        samples = np.loadtxt(filepath, delimiter=",")
+        if trim_beta:
+            samples = samples[:,0:-1]
         self.data = torch.tensor(samples, dtype = dtype)
         self.transform = transform
 
@@ -31,10 +33,12 @@ class SimpleGreensDataset(Dataset):
 # construct a dataset of the jackknife sample means of the read in samples
 class JackknifeGreensDataset(Dataset):
     
-    def __init__(self, filepath, transform=None, dtype = torch.float32):
+    def __init__(self, filepath, transform=None, dtype = torch.float32, trim_beta = True):
         
         # Load all Green's functions at once, trimming off tau = beta value
-        samples = np.loadtxt(filepath, delimiter=",")[:,0:-1]
+        samples = np.loadtxt(filepath, delimiter=",")
+        if trim_beta:
+            samples = samples[:,0:-1]
         
         # get the number of samples
         N_samples = samples.shape[0]
@@ -67,10 +71,12 @@ class JackknifeGreensDataset(Dataset):
 # construct a dataset of the means of bootstrap samples generated based on the read in samples
 class BootstrapGreensDataset(Dataset):
     
-    def __init__(self, filepath, N_bootstrap=None, transform=None, dtype = torch.float32):
+    def __init__(self, filepath, N_bootstrap=None, transform=None, dtype = torch.float32, trim_beta = True):
         
         # Load all the Green's function as once, trimming off tau = beta value
-        samples = np.loadtxt(filepath, delimiter=",")[:,0:-1]
+        samples = np.loadtxt(filepath, delimiter=",")
+        if trim_beta:
+            samples = samples[:,0:-1]
         
         # get the number of samples
         N_samples = samples.shape[0]

@@ -1,25 +1,27 @@
 import numpy as np
 
-def calculate_cov(datafile, reg = 1e-6):
+def calculate_cov(datafile, reg = 1e-6, trim_beta = True):
     
     samples = np.loadtxt(datafile, delimiter=",")
-    samples = samples[:,0:-1] # trim tau = beta point
+    if trim_beta:
+        samples = samples[:,0:-1] # trim tau = beta point
     Cov = np.cov(samples.T, bias=False)
     TrCov = np.trace(Cov)
     Cov += reg * TrCov/ Cov.shape[0] * np.eye(Cov.shape[0])
 
     return Cov
 
-def calculate_var(datafile, reg = 1e-6):
+def calculate_var(datafile, reg = 1e-6, trim_beta = True):
     
     samples = np.loadtxt(datafile, delimiter=",")
-    samples = samples[:,0:-1] # trim tau = beta point
+    if trim_beta:
+        samples = samples[:,0:-1] # trim tau = beta point
     var = np.var(samples, axis=0, ddof = 1)
     var += reg * np.mean(var)
     
     return var
 
-def calculate_var_and_derivatives(datafile, eps=1e-6):
+def calculate_var_and_derivatives(datafile, eps=1e-6, trim_beta = True):
     """
     Calculate regularized variance vectors for VAE loss:
     - var: variance of G(tau)
@@ -38,7 +40,8 @@ def calculate_var_and_derivatives(datafile, eps=1e-6):
     """
     
     samples = np.loadtxt(datafile, delimiter=",")
-    samples = samples[:,0:-1] # trim tau = beta point
+    if trim_beta:
+        samples = samples[:,0:-1] # trim tau = beta point
     
     var = np.var(samples, axis=0, ddof = 1)
     var2 = var[2:] + 4 * var[1:-1] + var[:-2]
@@ -51,11 +54,12 @@ def calculate_var_and_derivatives(datafile, eps=1e-6):
     return var, var2, var4
 
 
-def calculate_cov_and_derivatives(datafile, variance_threshold=0.99):
+def calculate_cov_and_derivatives(datafile, variance_threshold=0.99, trim_beta = True):
     
     # Load samples and remove last tau point
     samples = np.loadtxt(datafile, delimiter=",")
-    samples = samples[:, :-1]  # remove tau=beta point
+    if trim_beta:
+        samples = samples[:, :-1]  # remove tau=beta point
     N_samples, Ltau = samples.shape
 
     # --- Covariance of G(tau) ---

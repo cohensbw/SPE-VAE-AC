@@ -52,11 +52,17 @@ def spe_spectral(w, poles, residues):
 # Ltau = int(np.round(beta / dtau))
 # A = lambda w: stats.norm.pdf(w, loc = 0.0, scale = 1.0)
 
-datafile = "./../datasets/two-asymmetric-gaussians/binned_data.csv"
+# datafile = "./../datasets/two-asymmetric-gaussians/binned_data.csv"
+# beta = 10.0
+# dtau = 0.05
+# Ltau = int(np.round(beta / dtau))
+# A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf(w, loc = -2.0, scale = 0.5)
+
+datafile = "./../datasets/greens_s1e-04_xi0.5/Gbins_s1e-04_xi0.5.csv"
 beta = 10.0
 dtau = 0.05
 Ltau = int(np.round(beta / dtau))
-A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf(w, loc = -2.0, scale = 0.5)
+A = lambda w: 0.6*stats.norm.pdf(w, loc = 0.0, scale = 0.5) + 0.4*stats.norm.pdf(w, loc = 2.0, scale = 0.5)
 
 # datafile = "./../datasets/doped_lorentzian/binned_data.csv"
 # beta = 10.0
@@ -82,7 +88,7 @@ A = lambda w: 0.6*stats.norm.pdf(w, loc = 2.0, scale = 1.0) + 0.4*stats.norm.pdf
 # inv_var_4 = torch.tensor(inv_var_4, dtype = dtype)
 
 # calculate covariance matrices
-C, sqrt_C, inv_sqrt_C, n_components, var0, var2, var4 = calculate_cov_and_derivatives(datafile, variance_threshold = 0.99)
+C, sqrt_C, inv_sqrt_C, n_components, var0, var2, var4 = calculate_cov_and_derivatives(datafile, variance_threshold = 0.99, trim_beta = False)
 inv_sqrt_C = torch.tensor(inv_sqrt_C, dtype = dtype)
 var0 = torch.tensor(var0, dtype = dtype)
 var2 = torch.tensor(var2, dtype = dtype)
@@ -91,7 +97,7 @@ var4 = torch.tensor(var4, dtype = dtype)
 # %%
 
 # load raw dataset
-dataset = SimpleGreensDataset(datafile, dtype = dtype)
+dataset = SimpleGreensDataset(datafile, dtype = dtype, trim_beta=False)
 
 # Split deterministically (optional: set generator for reproducibility)
 # training_dataset, testing_dataset = random_split(dataset, [0.8, 0.2])
